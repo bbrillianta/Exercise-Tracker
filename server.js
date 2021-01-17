@@ -23,10 +23,10 @@ const { Schema } = mongoose;
 const userSchema = new Schema({
   username: String,
   count: { type: Number, default: 0 },
-  exercises: {
+  log: {
     type: [{
       description: String,
-      duration: String,
+      duration: Number,
       date: String
     }],
     default: []
@@ -75,33 +75,66 @@ app.get('/api/exercise/users', (req, res, next) => {
 
 //Adding exercises
 app.post('/api/exercise/add', (req, res, next) => {
-  const { userId, description, duration } = req.body;
-  let { date } = req.body;
+  const { userId, description } = req.body;
+  let { date, duration } = req.body;
 
-  date = ((date == "") ? new Date() : new Date(date));
+  date = ((date == "") ? new Date().toDateString() : new Date(date).toDateString());
+  duration = parseInt(duration);
 
   const addExercise = async () => { 
     return await User.findByIdAndUpdate(userId, {
       $inc: { count: 1 },
-      $push: {
-        exercises: {
-          description: description,
-          duration: duration,
-          date: date
-        }
-      }
+      $push: { log: {
+        description: description,
+        duration: duration,
+        date: date
+      } }
     }, {new: true}); 
   }
 
   addExercise()
-  .then(user => res.send(user))
+  .then(user => res.send({
+    _id: user._id,
+    username: user.username,
+    date: date,
+    duration: duration,
+    description: description
+  }))
   .catch(next);
 });
 
 app.get('/api/exercise/log', (req, res, next) => {
-  const { userId } = req.query;
+  const { userId , limit, from, to } = req.query;
+  let fromDate = new Date(0);
+  let toDate = new Date();
 
-  const getUser = async () => await User.findById(userId);
+  const getUser = async () => { 
+    let query = await User.findById(userId);
+
+    if(from != undefined) { 
+      fromDate = await new Date(from).toDateString();
+      fromDate = await new Date(fromDate).getTime();
+    }
+
+    if(to != undefined) { 
+      toDate = await new Date(to).toDateString(); 
+      toDate = await new Date(toDate).getTime();
+    }
+
+    if(from != undefined || to != undefined) {
+      query.log = await query.log.filter(log => {
+        const logDate = new Date(log.date).getTime();
+          
+        return logDate >= fromDate && logDate <= toDate;  
+      });
+    }
+    
+    if(limit != undefined) { 
+      query.log.splice(limit); 
+    }
+    
+    return query;
+  }
 
   getUser()
   .then(user => res.send(user))
